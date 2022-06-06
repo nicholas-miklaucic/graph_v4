@@ -15,12 +15,12 @@ pub trait GraphType {
     fn is_directed() -> bool;
 }
 
-#[derive(Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 /// A directed graph.
 pub enum Directed {}
 
 impl GraphType for Directed {
-    fn is_directed() {
+    fn is_directed() -> bool {
         true
     }
 }
@@ -29,9 +29,22 @@ impl GraphType for Directed {
 pub enum Undirected {}
 
 impl GraphType for Undirected {
-    fn is_directed() {
+    fn is_directed() -> bool {
         false
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// An edge containing data.
+pub struct Edge<E> {
+    /// The start node.
+    pub start: NodeInd,
+    /// The end node.
+    pub end: NodeInd,
+    /// The edge index.
+    pub index: EdgeInd,
+    /// The edge data.
+    pub data: E,
 }
 
 /// Graph base trait. N is the node data, E is the edge data. Ty is the type of graph.
@@ -40,13 +53,13 @@ pub trait GraphBase<N, E, Ty: GraphType> {
     fn node(&self, n: &NodeInd) -> &N;
 
     /// Get the data for a specific edge.
-    fn edge(&self, e: &EdgeInd) -> &E;
+    fn edge(&self, e: &EdgeInd) -> &Edge<E>;
 
     /// Get the data for a specific node mutably.
     fn node_mut(&mut self, n: &NodeInd) -> &mut N;
 
     /// Get the data for a specific edge mutably.
-    fn edge_mut(&mut self, e: &EdgeInd) -> &mut E;
+    fn edge_mut(&mut self, e: &EdgeInd) -> &mut Edge<E>;
 
     /// Add a node with given data. Returns the new index.
     fn add_node(&mut self, data: N) -> NodeInd;
@@ -55,7 +68,7 @@ pub trait GraphBase<N, E, Ty: GraphType> {
     fn add_edge(&mut self, start: &NodeInd, end: &NodeInd, data: E) -> EdgeInd;
 
     /// Removes an edge with the given index. Returns the data with that edge.
-    fn remove_edge(&mut self, e: &EdgeInd) -> E;
+    fn remove_edge(&mut self, e: &EdgeInd) -> Edge<E>;
 
     // Gets all of the nodes.
     fn nodes(&self) -> Box<dyn Iterator<Item = NodeInd>>;
@@ -66,17 +79,17 @@ pub trait GraphBase<N, E, Ty: GraphType> {
     /// Gets all of the edges from a specific node, as an iterator. For
     /// undirected graphs, this is all edges incident on the node: for directed
     /// graphs, only the edges going out from this node.
-    fn edges_from(&self, n: &NodeInd) -> Box<dyn Iterator<Item = EdgeInd>>;
+    fn edges_from(&self, n: &NodeInd) -> Box<dyn Iterator<Item = Edge<E>>>;
 
     /// Gets all of the edges to a specific node, as an iterator. For
     /// undirected graphs, this is all edges incident on the node: for directed
     /// graphs, only the edges going from from this node.
-    fn edges_to(&self, n: &NodeInd) -> Box<dyn Iterator<Item = EdgeInd>>;
+    fn edges_to(&self, n: &NodeInd) -> Box<dyn Iterator<Item = Edge<E>>>;
 
     /// Gets all of the edges at a specific node, as an iterator. For
     /// undirected graphs, this is all edges incident on the node. For directed graphs,
     /// it is the edges going from and the edges going to this node.
-    fn edges_at(&self, n: &NodeInd) -> Box<dyn Iterator<Item = EdgeInd>>;
+    fn edges_at(&self, n: &NodeInd) -> Box<dyn Iterator<Item = Edge<E>>>;
 
     /// Get the nodes connected by the edge as a tuple (start, end).
     fn edge_endpoints(&self, e: &EdgeInd) -> (NodeInd, NodeInd);
@@ -100,12 +113,19 @@ pub trait GraphBase<N, E, Ty: GraphType> {
     /// directed, or any node connected by an edge if undirected.
     fn neighbors<'a>(&'a self, n: &'a NodeInd) -> Box<dyn Iterator<Item = NodeInd> + 'a> {
         if self.is_directed() {
-            return Box::new(self.edges_from(n).map(|e| self.edge_start(&e)));
+            return Box::new(
+                self.edges_from(n)
+                    .map(|e| self.edge_start(&e.index))
+                    .collect::<Vec<NodeInd>>()
+                    .into_iter(),
+            );
         } else {
             return Box::new(
                 self.edges_at(n)
-                    .map(|e| self.edge_endpoints(&e))
-                    .map(move |(start, end)| if &start == n { end } else { start }),
+                    .map(|e| self.edge_endpoints(&e.index))
+                    .map(move |(start, end)| if &start == n { end } else { start })
+                    .collect::<Vec<NodeInd>>()
+                    .into_iter(),
             );
         };
     }
